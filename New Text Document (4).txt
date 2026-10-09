@@ -3367,7 +3367,7 @@ TabHome:AddSection("Welcome to Specter")
 TabHome:AddParagraph(
     {
         Title = "Specter - TPS Street Soccer Edition",
-        Content = "Rebuilt with Specter UI v3.0 (specter v3 ).\nOriginal script credits: @wollertg & @e3ug.\nSelf-contained.",
+        Content = "Rebuilt with Specter UI v3.0 (Quantum Minimalist Obsidian).\nOriginal script credits: @kimidev & @savv.\nSelf-contained. Works on Delta Mobile, PC, Xeno, Codex, Fluxus, and more.",
     }
 )
 
