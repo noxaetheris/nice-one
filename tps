@@ -604,14 +604,15 @@ local V3zero = Vector3.zero
 local MAT_AIR = Enum.Material.Air
 
 local Tab2 = Window:MakeTab({"Reach", "lucide-user"})
-Tab2:AddSection({"Reach"})
-Tab2:AddParagraph(
-    {"Reach Info", "PreSimulation Predictive Reach with visual hitbox moving with character."}
-)
 
-local reachSize = Vector3.new(5, 5, 5)
+local reachSize = Vector3.new(10, 10, 10)
 local reachDist = 5
+local reachX = 5
+local reachY = 5
+local reachZ = 5
+local reachMode = "Normal" -- "Normal" or "XYZ"
 local legReachEnabled = false
+local xyzReachEnabled = false
 local reachConn = nil
 local shapeType = "Box"
 local transparency2 = 0.7
@@ -777,23 +778,47 @@ local HIGH_PING_MS = 0.10
 local GRAV_HALF_SQ = -9.8 * 0.5 * (1 / 60) * (1 / 60)
 local INSIDE_THRESH = 2.5
 
+local function applyReachSettings()
+    if reachMode == "XYZ" then
+        reachSize = Vector3.new(reachX * 2, reachY * 2, reachZ * 2)
+    else
+        reachSize = Vector3.new(reachDist * 2, reachDist * 2, reachDist * 2)
+    end
+    if reachPart then
+        reachPart.Size = reachSize
+        reachPart.Transparency = transparency2
+        if shapeType == "Box" then
+            reachPart.Shape = Enum.PartType.Block
+        elseif shapeType == "Sphere" then
+            reachPart.Shape = Enum.PartType.Ball
+        elseif shapeType == "Cylinder" then
+            reachPart.Shape = Enum.PartType.Cylinder
+        end
+        if (legReachEnabled or xyzReachEnabled) and _root then
+            reachPart.CFrame = _root.CFrame
+        end
+    end
+end
+
 local function startReach()
     if reachConn then
         reachConn:Disconnect()
+        reachConn = nil
     end
-    reachPart.Size = reachSize
+    applyReachSettings()
     reachConn = RunService.PreSimulation:Connect(
         function()
             if not _root or not _hum then
                 return
             end
+
+            -- Always update reach box position to follow character so user can see it!
+            reachPart.CFrame = _root.CFrame
+
             local ball = getBall()
             if not ball then
                 return
             end
-
-            -- Reach part moves with character (Method 2 movement)
-            reachPart.CFrame = _root.CFrame
 
             local now = clock()
             if now - _lastPingT >= 2 then
@@ -805,7 +830,8 @@ local function startReach()
             local rootPos = _root.Position
             local qdx = ballPos.X - rootPos.X
             local qdz = ballPos.Z - rootPos.Z
-            if abs(qdx) > (reachDist + 16) or abs(qdz) > (reachDist + 16) then
+            local maxBound = math.max(reachSize.X, reachSize.Z) / 2
+            if abs(qdx) > (maxBound + 16) or abs(qdz) > (maxBound + 16) then
                 return
             end
 
@@ -814,7 +840,8 @@ local function startReach()
             local rawDist = sqrt(qdx * qdx + qdy * qdy + qdz * qdz)
 
             -- In range: fire touch
-            if rawDist <= reachDist or rawDist < INSIDE_THRESH then
+            local maxDim = math.max(reachSize.X, reachSize.Y, reachSize.Z) / 2
+            if rawDist <= maxDim or rawDist < INSIDE_THRESH then
                 fireLeg(ball)
                 return
             end
@@ -862,24 +889,49 @@ local function stopReach()
     reachPart.CFrame = CFrame.new(0, -9999, 0)
 end
 
+-- UI Controls
 local reachToggleUI = nil
 local reachSliderUI = nil
 local reachSyncBoxUI = nil
+
+local xyzToggleUI = nil
+local reachXYZAllSliderUI = nil
+local reachXYZAllBoxUI = nil
+local reachXSliderUI = nil
+local reachYSliderUI = nil
+local reachZSliderUI = nil
+local reachXBoxUI = nil
+local reachYBoxUI = nil
+local reachZBoxUI = nil
+
 local reachShapeUI = nil
 local reachHideUI = nil
 local headReachToggleUI = nil
 local headReachSliderUI = nil
 
+-- SECTION 1: NORMAL REACH
+Tab2:AddSection({"Normal Reach"})
+Tab2:AddParagraph(
+    {"Normal Reach", "Standard uniform predictive reach expanding equally across all axes."}
+)
+
 reachToggleUI = Tab2:AddToggle(
     {
-        Name = "Enable Reach",
+        Name = "Enable Normal Reach",
         Default = false,
         Callback = function(v)
             legReachEnabled = v
             if v then
+                reachMode = "Normal"
+                xyzReachEnabled = false
+                if xyzToggleUI and xyzToggleUI.Set then
+                    pcall(function() xyzToggleUI:Set(false) end)
+                end
                 startReach()
             else
-                stopReach()
+                if not xyzReachEnabled then
+                    stopReach()
+                end
             end
         end
     }
@@ -889,15 +941,13 @@ reachSliderUI = Tab2:AddSlider(
     {
         Name = "Reach Size",
         Min = 1,
-        Max = 15,
+        Max = 12,
         Increase = 1,
         Default = 5,
         Callback = function(v)
             reachDist = v
-            reachSize = Vector3.new(v * 2, v * 2, v * 2)
-            reachPart.Size = reachSize
-            if legReachEnabled then
-                startReach()
+            if reachMode == "Normal" and (legReachEnabled or xyzReachEnabled) then
+                applyReachSettings()
             end
         end
     }
@@ -906,21 +956,208 @@ reachSliderUI = Tab2:AddSlider(
 reachSyncBoxUI = Tab2:AddTextBox(
     {
         Name = "Sync Reach Size",
-        PlaceholderText = "Size (1-15)",
+        PlaceholderText = "Size (1-12)",
         Callback = function(v)
             local n = tonumber(v)
             if n then
-                n = math.clamp(n, 1, 15)
+                n = math.clamp(n, 1, 12)
                 reachDist = n
-                reachSize = Vector3.new(n * 2, n * 2, n * 2)
-                reachPart.Size = reachSize
-                if legReachEnabled then
-                    startReach()
+                if reachSliderUI and reachSliderUI.Set then pcall(function() reachSliderUI:Set(n) end) end
+                if reachSliderUI and reachSliderUI.SetValue then pcall(function() reachSliderUI:SetValue(n) end) end
+                if reachMode == "Normal" and (legReachEnabled or xyzReachEnabled) then
+                    applyReachSettings()
                 end
             end
         end
     }
 )
+
+-- SECTION 2: XYZ REACH SYSTEM (SINGLE AXIS CONTROLS)
+Tab2:AddSection({"XYZ Reach System"})
+Tab2:AddParagraph(
+    {"XYZ System", "Customize each individual axis independently (X = Width, Y = Height, Z = Length)."}
+)
+
+xyzToggleUI = Tab2:AddToggle(
+    {
+        Name = "Enable XYZ Reach",
+        Default = false,
+        Callback = function(v)
+            xyzReachEnabled = v
+            if v then
+                reachMode = "XYZ"
+                legReachEnabled = false
+                if reachToggleUI and reachToggleUI.Set then
+                    pcall(function() reachToggleUI:Set(false) end)
+                end
+                startReach()
+            else
+                if not legReachEnabled then
+                    stopReach()
+                end
+            end
+        end
+    }
+)
+
+reachXYZAllSliderUI = Tab2:AddSlider(
+    {
+        Name = "Reach Size (All X.Y.Z)",
+        Min = 1,
+        Max = 12,
+        Increase = 1,
+        Default = 5,
+        Callback = function(v)
+            reachX = v
+            reachY = v
+            reachZ = v
+            if reachXSliderUI and reachXSliderUI.Set then pcall(function() reachXSliderUI:Set(v) end) end
+            if reachXSliderUI and reachXSliderUI.SetValue then pcall(function() reachXSliderUI:SetValue(v) end) end
+            if reachYSliderUI and reachYSliderUI.Set then pcall(function() reachYSliderUI:Set(v) end) end
+            if reachYSliderUI and reachYSliderUI.SetValue then pcall(function() reachYSliderUI:SetValue(v) end) end
+            if reachZSliderUI and reachZSliderUI.Set then pcall(function() reachZSliderUI:Set(v) end) end
+            if reachZSliderUI and reachZSliderUI.SetValue then pcall(function() reachZSliderUI:SetValue(v) end) end
+            if reachMode == "XYZ" and (legReachEnabled or xyzReachEnabled) then
+                applyReachSettings()
+            end
+        end
+    }
+)
+
+reachXYZAllBoxUI = Tab2:AddTextBox(
+    {
+        Name = "Sync Reach Size (All X.Y.Z)",
+        PlaceholderText = "Size (1-12)",
+        Callback = function(v)
+            local n = tonumber(v)
+            if n then
+                n = math.clamp(n, 1, 12)
+                reachX = n
+                reachY = n
+                reachZ = n
+                if reachXYZAllSliderUI and reachXYZAllSliderUI.Set then pcall(function() reachXYZAllSliderUI:Set(n) end) end
+                if reachXYZAllSliderUI and reachXYZAllSliderUI.SetValue then pcall(function() reachXYZAllSliderUI:SetValue(n) end) end
+                if reachXSliderUI and reachXSliderUI.Set then pcall(function() reachXSliderUI:Set(n) end) end
+                if reachXSliderUI and reachXSliderUI.SetValue then pcall(function() reachXSliderUI:SetValue(n) end) end
+                if reachYSliderUI and reachYSliderUI.Set then pcall(function() reachYSliderUI:Set(n) end) end
+                if reachYSliderUI and reachYSliderUI.SetValue then pcall(function() reachYSliderUI:SetValue(n) end) end
+                if reachZSliderUI and reachZSliderUI.Set then pcall(function() reachZSliderUI:Set(n) end) end
+                if reachZSliderUI and reachZSliderUI.SetValue then pcall(function() reachZSliderUI:SetValue(n) end) end
+                if reachMode == "XYZ" and (legReachEnabled or xyzReachEnabled) then
+                    applyReachSettings()
+                end
+            end
+        end
+    }
+)
+
+reachXSliderUI = Tab2:AddSlider(
+    {
+        Name = "Reach X (Width)",
+        Min = 1,
+        Max = 12,
+        Increase = 1,
+        Default = 5,
+        Callback = function(v)
+            reachX = v
+            if reachMode == "XYZ" and (legReachEnabled or xyzReachEnabled) then
+                applyReachSettings()
+            end
+        end
+    }
+)
+
+reachXBoxUI = Tab2:AddTextBox(
+    {
+        Name = "Sync X (Width)",
+        PlaceholderText = "X (1-12)",
+        Callback = function(v)
+            local n = tonumber(v)
+            if n then
+                n = math.clamp(n, 1, 12)
+                reachX = n
+                if reachXSliderUI and reachXSliderUI.Set then pcall(function() reachXSliderUI:Set(n) end) end
+                if reachXSliderUI and reachXSliderUI.SetValue then pcall(function() reachXSliderUI:SetValue(n) end) end
+                if reachMode == "XYZ" and (legReachEnabled or xyzReachEnabled) then
+                    applyReachSettings()
+                end
+            end
+        end
+    }
+)
+
+reachYSliderUI = Tab2:AddSlider(
+    {
+        Name = "Reach Y (Height)",
+        Min = 1,
+        Max = 12,
+        Increase = 1,
+        Default = 5,
+        Callback = function(v)
+            reachY = v
+            if reachMode == "XYZ" and (legReachEnabled or xyzReachEnabled) then
+                applyReachSettings()
+            end
+        end
+    }
+)
+
+reachYBoxUI = Tab2:AddTextBox(
+    {
+        Name = "Sync Y (Height)",
+        PlaceholderText = "Y (1-12)",
+        Callback = function(v)
+            local n = tonumber(v)
+            if n then
+                n = math.clamp(n, 1, 12)
+                reachY = n
+                if reachYSliderUI and reachYSliderUI.Set then pcall(function() reachYSliderUI:Set(n) end) end
+                if reachYSliderUI and reachYSliderUI.SetValue then pcall(function() reachYSliderUI:SetValue(n) end) end
+                if reachMode == "XYZ" and (legReachEnabled or xyzReachEnabled) then
+                    applyReachSettings()
+                end
+            end
+        end
+    }
+)
+
+reachZSliderUI = Tab2:AddSlider(
+    {
+        Name = "Reach Z (Length)",
+        Min = 1,
+        Max = 12,
+        Increase = 1,
+        Default = 5,
+        Callback = function(v)
+            reachZ = v
+            if reachMode == "XYZ" and (legReachEnabled or xyzReachEnabled) then
+                applyReachSettings()
+            end
+        end
+    }
+)
+
+reachZBoxUI = Tab2:AddTextBox(
+    {
+        Name = "Sync Z (Length)",
+        PlaceholderText = "Z (1-12)",
+        Callback = function(v)
+            local n = tonumber(v)
+            if n then
+                n = math.clamp(n, 1, 12)
+                reachZ = n
+                if reachZSliderUI and reachZSliderUI.Set then pcall(function() reachZSliderUI:Set(n) end) end
+                if reachZSliderUI and reachZSliderUI.SetValue then pcall(function() reachZSliderUI:SetValue(n) end) end
+                if reachMode == "XYZ" and (legReachEnabled or xyzReachEnabled) then
+                    applyReachSettings()
+                end
+            end
+        end
+    }
+)
+
+-- SECTION 3: VISUALS & SHAPE
+Tab2:AddSection({"Visuals & Shape"})
 
 reachShapeUI = Tab2:AddDropdown(
     {
@@ -936,7 +1173,7 @@ reachShapeUI = Tab2:AddDropdown(
             elseif shapeType == "Cylinder" then
                 reachPart.Shape = Enum.PartType.Cylinder
             end
-            if legReachEnabled then
+            if legReachEnabled or xyzReachEnabled then
                 startReach()
             end
         end
@@ -954,26 +1191,6 @@ reachHideUI = Tab2:AddToggle(
     }
 )
 
-local function applyReachSettings()
-    reachSize = Vector3.new(reachDist * 2, reachDist * 2, reachDist * 2)
-    if reachPart then
-        reachPart.Size = reachSize
-        reachPart.Transparency = transparency2
-        if shapeType == "Box" then
-            reachPart.Shape = Enum.PartType.Block
-        elseif shapeType == "Sphere" then
-            reachPart.Shape = Enum.PartType.Ball
-        elseif shapeType == "Cylinder" then
-            reachPart.Shape = Enum.PartType.Cylinder
-        end
-    end
-    if legReachEnabled then
-        startReach()
-    else
-        stopReach()
-    end
-end
-
 -- ==============================================================================
 -- HEAD REACH LOGIC & HELPERS
 -- ==============================================================================
@@ -988,6 +1205,25 @@ local function updateUIElements()
     pcall(function()
         if reachSliderUI and reachSliderUI.Set then reachSliderUI:Set(reachDist) end
         if reachSliderUI and reachSliderUI.SetValue then reachSliderUI:SetValue(reachDist) end
+    end)
+    pcall(function()
+        if xyzToggleUI and xyzToggleUI.Set then xyzToggleUI:Set(xyzReachEnabled) end
+    end)
+    pcall(function()
+        if reachXYZAllSliderUI and reachXYZAllSliderUI.Set then reachXYZAllSliderUI:Set(reachX) end
+        if reachXYZAllSliderUI and reachXYZAllSliderUI.SetValue then reachXYZAllSliderUI:SetValue(reachX) end
+    end)
+    pcall(function()
+        if reachXSliderUI and reachXSliderUI.Set then reachXSliderUI:Set(reachX) end
+        if reachXSliderUI and reachXSliderUI.SetValue then reachXSliderUI:SetValue(reachX) end
+    end)
+    pcall(function()
+        if reachYSliderUI and reachYSliderUI.Set then reachYSliderUI:Set(reachY) end
+        if reachYSliderUI and reachYSliderUI.SetValue then reachYSliderUI:SetValue(reachY) end
+    end)
+    pcall(function()
+        if reachZSliderUI and reachZSliderUI.Set then reachZSliderUI:Set(reachZ) end
+        if reachZSliderUI and reachZSliderUI.SetValue then reachZSliderUI:SetValue(reachZ) end
     end)
     pcall(function()
         if reachShapeUI and reachShapeUI.Select then reachShapeUI:Select(shapeType) end
@@ -2136,83 +2372,6 @@ TabAv:AddButton({"Save Current", function()
 end})
 
 -- ==============================================================================
--- AIR DRIBBLE (MiddleNight Tab 9)
--- ==============================================================================
-task.wait()
-local TabAir = Window:MakeTab({"Air Dribble", "lucide-wind"})
-TabAir:AddSection({"Air Platform"})
-
-local airOn, airConn, airPart = false, nil, nil
-local airX, airY, airZ, airTrans, airOff = 12, 0.5, 12, 0.4, 1.5
-
-local function airCreate()
-    if airPart then airPart:Destroy() end
-    local p = Instance.new("Part")
-    p.Name="AirPlatform"; p.Size=Vector3.new(airX,airY,airZ); p.Anchored=true
-    p.CanCollide=true; p.CanTouch=true; p.Massless=true
-    p.Transparency=airTrans; p.Color=Color3.fromRGB(120,200,255)
-    p.Material=Enum.Material.SmoothPlastic; p.Parent=workspace
-    airPart = p
-end
-
-local function airRefresh()
-    if airPart then airPart.Size = Vector3.new(airX,airY,airZ); airPart.Transparency = airTrans end
-end
-
-TabAir:AddToggle({
-    Name = "Enable Air Platform",
-    Default = false,
-    Callback = function(v)
-        airOn = v
-        if airConn then airConn:Disconnect(); airConn = nil end
-        if not v then
-            if airPart then airPart:Destroy(); airPart = nil end
-            return
-        end
-        airCreate()
-        airConn = RunService.Heartbeat:Connect(function()
-            local ball = getBall()
-            if not ball or not airPart then return end
-            airPart.CFrame = CFrame.new(ball.Position + Vector3.new(0,-airOff,0))
-        end)
-        pcall(function() if WindUI and WindUI.Notify then WindUI:Notify({Title="Air Platform", Content="Enabled", Duration=2}) end end)
-    end
-})
-TabAir:AddSlider({Name="X (Width)", Min=1, Max=50, Increase=1, Default=12, Callback=function(v) airX=v; airRefresh() end})
-TabAir:AddSlider({Name="Y (Thickness)", Min=1, Max=10, Increase=1, Default=1, Callback=function(v) airY=v/2; airRefresh() end})
-TabAir:AddSlider({Name="Z (Depth)", Min=1, Max=50, Increase=1, Default=12, Callback=function(v) airZ=v; airRefresh() end})
-TabAir:AddSlider({Name="Distance Below", Min=0, Max=8, Increase=1, Default=2, Callback=function(v) airOff=v end})
-TabAir:AddSlider({Name="Visibility", Min=0, Max=10, Increase=1, Default=6, Callback=function(v) airTrans=1-v/10; airRefresh() end})
-
-TabAir:AddSection({"Auto Ball"})
-
-local abOn, abConn, abRad = false, nil, 3
-
-TabAir:AddToggle({
-    Name = "Auto Ball (Walk to ball)",
-    Default = false,
-    Callback = function(v)
-        abOn = v
-        if abConn then abConn:Disconnect(); abConn = nil end
-        if not v then
-            local ch = lp and lp.Character or Players.LocalPlayer.Character
-            if ch then local h = ch:FindFirstChildOfClass("Humanoid"); if h then h:MoveTo(ch:GetPivot().Position) end end
-            return
-        end
-        abConn = RunService.Heartbeat:Connect(function()
-            local ch = lp and lp.Character or Players.LocalPlayer.Character; if not ch then return end
-            local hrp = ch:FindFirstChild("HumanoidRootPart"); local hum = ch:FindFirstChildOfClass("Humanoid")
-            if not hrp or not hum then return end
-            local ball = getBall(); if not ball then return end
-            local dist = (hrp.Position - ball.Position).Magnitude
-            if dist > abRad then hum:MoveTo(ball.Position) else hum:MoveTo(hrp.Position) end
-        end)
-        pcall(function() if WindUI and WindUI.Notify then WindUI:Notify({Title="Auto Ball", Content="Enabled", Duration=2}) end end)
-    end
-})
-TabAir:AddSlider({Name="Stop Distance", Min=1, Max=10, Increase=1, Default=3, Callback=function(v) abRad=v end})
-
--- ==============================================================================
 -- SETTINGS & CONFIGURATION MANAGER (LAST TAB)
 -- ==============================================================================
 task.wait()
@@ -2312,7 +2471,12 @@ local function collectConfigData()
     return {
         Reach = {
             Enabled = legReachEnabled,
+            XYZEnabled = xyzReachEnabled,
+            Mode = reachMode,
             Distance = reachDist,
+            X = reachX,
+            Y = reachY,
+            Z = reachZ,
             Shape = shapeType,
             Transparency = transparency2,
             Hidden = (transparency2 == 1)
@@ -2330,7 +2494,19 @@ local function applyConfigData(data)
     -- Tab 2 Reach
     if data.Reach and type(data.Reach) == "table" then
         if data.Reach.Distance ~= nil then
-            reachDist = math.clamp(tonumber(data.Reach.Distance) or 5, 1, 15)
+            reachDist = math.clamp(tonumber(data.Reach.Distance) or 5, 1, 12)
+        end
+        if data.Reach.X ~= nil then
+            reachX = math.clamp(tonumber(data.Reach.X) or 5, 1, 12)
+        end
+        if data.Reach.Y ~= nil then
+            reachY = math.clamp(tonumber(data.Reach.Y) or 5, 1, 12)
+        end
+        if data.Reach.Z ~= nil then
+            reachZ = math.clamp(tonumber(data.Reach.Z) or 5, 1, 12)
+        end
+        if data.Reach.Mode ~= nil then
+            reachMode = tostring(data.Reach.Mode)
         end
         if data.Reach.Shape ~= nil then
             shapeType = tostring(data.Reach.Shape)
@@ -2339,6 +2515,9 @@ local function applyConfigData(data)
             transparency2 = data.Reach.Hidden and 1 or 0.7
         elseif data.Reach.Transparency ~= nil then
             transparency2 = tonumber(data.Reach.Transparency) or 0.7
+        end
+        if data.Reach.XYZEnabled ~= nil then
+            xyzReachEnabled = data.Reach.XYZEnabled and true or false
         end
         if data.Reach.Enabled ~= nil then
             legReachEnabled = data.Reach.Enabled and true or false
@@ -2472,7 +2651,12 @@ end
 
 local function resetAllSettings()
     legReachEnabled = false
+    xyzReachEnabled = false
+    reachMode = "Normal"
     reachDist = 5
+    reachX = 5
+    reachY = 5
+    reachZ = 5
     reachSize = Vector3.new(10, 10, 10)
     shapeType = "Box"
     transparency2 = 0.7
@@ -2597,4 +2781,5 @@ task.spawn(function()
         end
     end)
 end)
+
 
