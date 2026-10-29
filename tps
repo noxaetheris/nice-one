@@ -142,6 +142,12 @@ WindUI:AddTheme({
     Icon = Color3.fromHex("#FFFFFF"),
 })
 
+local UserInputService = game:GetService("UserInputService")
+local isPC = UserInputService.KeyboardEnabled and UserInputService.MouseEnabled
+
+local currentToggleKey = Enum.KeyCode.RightShift
+local floatingIconEnabled = not isPC -- Default: False on PC (uses keybind), True on Mobile
+
 local Window = WindUI:CreateWindow({
     Title = "Specter",
     Icon = "ghost",
@@ -152,14 +158,45 @@ local Window = WindUI:CreateWindow({
     Theme = "Specter",
     SideBarWidth = 140,
     HasOutline = true,
-    ToggleKey = Enum.KeyCode.RightShift,
-    Keybind = Enum.KeyCode.RightShift
+    ToggleKey = currentToggleKey,
+    Keybind = currentToggleKey,
+    OpenButton = {
+        Enabled = true,
+        OnlyMobile = false
+    }
 })
 
 -- ==============================================================================
--- OPEN / CLOSE UI CONTROLLER (PC & Mobile Support)
+-- OPEN / CLOSE UI CONTROLLER & FLOATING GHOST ICON MANAGER
 -- ==============================================================================
-local UserInputService = game:GetService("UserInputService")
+local function updateFloatingIconVisibility()
+    pcall(function()
+        if not Window or not Window.OpenButtonMain then return end
+        if not floatingIconEnabled then
+            Window.IsOpenButtonEnabled = false
+            Window.OpenButtonMain:Visible(false)
+            if Window.OpenButtonMain.Button and Window.OpenButtonMain.Button.Parent then
+                Window.OpenButtonMain.Button.Parent.Visible = false
+            end
+        else
+            Window.IsOpenButtonEnabled = true
+            if Window.Closed then
+                Window.OpenButtonMain:Visible(true)
+                if Window.OpenButtonMain.Button and Window.OpenButtonMain.Button.Parent then
+                    Window.OpenButtonMain.Button.Parent.Visible = true
+                end
+            else
+                Window.OpenButtonMain:Visible(false)
+                if Window.OpenButtonMain.Button and Window.OpenButtonMain.Button.Parent then
+                    Window.OpenButtonMain.Button.Parent.Visible = false
+                end
+            end
+        end
+    end)
+end
+
+-- Ensure correct initial visibility
+updateFloatingIconVisibility()
 
 local function toggleUI()
     local done = false
@@ -189,121 +226,27 @@ local function toggleUI()
             end
         end)
     end
+    updateFloatingIconVisibility()
 end
 
--- Keyboard Keybind (RightShift, LeftControl, Insert)
-local toggleKeyCodes = {
-    [Enum.KeyCode.RightShift] = true,
-    [Enum.KeyCode.LeftControl] = true,
-    [Enum.KeyCode.Insert] = true,
-}
-
+-- Keyboard Keybind Listener: Opens/Closes on currentToggleKey (Default: RightShift)
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if toggleKeyCodes[input.KeyCode] then
-        -- Never toggle when user is typing in a chat or text box
+    if input.KeyCode == currentToggleKey then
         if UserInputService:GetFocusedTextBox() then return end
         toggleUI()
     end
 end)
 
--- Draggable On-Screen Floating Button (Mobile Only - Hidden on PC)
-task.spawn(function()
-    local parentGui
-    pcall(function()
-        if type(gethui) == "function" then
-            parentGui = gethui()
-        elseif game:GetService("CoreGui") then
-            parentGui = game:GetService("CoreGui")
-        else
-            parentGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
-        end
-    end)
-    if not parentGui then return end
-
-    pcall(function()
-        local old = parentGui:FindFirstChild("SpecterToggleGui")
-        if old then old:Destroy() end
-    end)
-
-    -- Hide floating icon on PC (PC opens and closes via RightShift)
-    -- Only spawn the floating button on phone / mobile touch devices
-    if UserInputService.KeyboardEnabled and UserInputService.MouseEnabled then
-        return
-    end
-
-    local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "SpecterToggleGui"
-    screenGui.ResetOnSpawn = false
-    screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-
-    local toggleBtn = Instance.new("TextButton")
-    toggleBtn.Name = "ToggleButton"
-    toggleBtn.Size = UDim2.new(0, 44, 0, 44)
-    toggleBtn.Position = UDim2.new(0, 20, 0.45, 0)
-    toggleBtn.BackgroundColor3 = Color3.fromRGB(15, 15, 18)
-    toggleBtn.Text = "👻"
-    toggleBtn.TextSize = 22
-    toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    toggleBtn.AutoButtonColor = false
-    toggleBtn.Parent = screenGui
-
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(1, 0)
-    corner.Parent = toggleBtn
-
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = Color3.fromRGB(255, 255, 255)
-    stroke.Thickness = 1.5
-    stroke.Transparency = 0.25
-    stroke.Parent = toggleBtn
-
-    local dragging = false
-    local dragStart = nil
-    local startPos = nil
-    local didMove = false
-    local dragThreshold = 6
-
-    toggleBtn.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            didMove = false
-            dragStart = input.Position
-            startPos = toggleBtn.Position
-
-            local conn
-            conn = input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
-                    if conn then conn:Disconnect() end
-                end
+-- Make clicking the floating ghost button open/close the UI
+pcall(function()
+    if Window.OpenButtonMain and Window.OpenButtonMain.Button then
+        local btn = Window.OpenButtonMain.Button:FindFirstChildWhichIsA("TextButton", true)
+        if btn then
+            btn.MouseButton1Click:Connect(function()
+                toggleUI()
             end)
         end
-    end)
-
-    toggleBtn.InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-            local delta = input.Position - dragStart
-            if math.abs(delta.X) > dragThreshold or math.abs(delta.Y) > dragThreshold then
-                didMove = true
-            end
-            toggleBtn.Position = UDim2.new(
-                startPos.X.Scale,
-                startPos.X.Offset + delta.X,
-                startPos.Y.Scale,
-                startPos.Y.Offset + delta.Y
-            )
-        end
-    end)
-
-    toggleBtn.Activated:Connect(function()
-        if not didMove then
-            toggleUI()
-        end
-    end)
-
-    pcall(function()
-        screenGui.Parent = parentGui
-    end)
+    end
 end)
 
 local InfoTab = Window:Tab({ Title = "Info", Icon = "info" })
@@ -317,7 +260,7 @@ InfoTab:Paragraph({
 
 InfoTab:Paragraph({
     Title = "Open / Close UI",
-    Desc = "• PC: Press RightShift\n• Mobile & PC: Tap the floating 👻 icon on screen (drag it anywhere to reposition)"
+    Desc = "• PC: Press RightShift\n• PC: Press RightShift to open/close\n• Mobile: Tap the floating ghost icon on screen"
 })
 
 InfoTab:Button({
@@ -459,6 +402,42 @@ local function wrapTab(tab)
             })
         end)
         return ok and res or nil
+    end
+
+    function tab:AddKeybind(data)
+        local title = data.Name or data.Title or "Keybind"
+        local desc = data.Description or data.Desc or ""
+        local defVal = data.Default or data.Value or "RightShift"
+        if typeof(defVal) == "EnumItem" then
+            defVal = defVal.Name
+        end
+        local cb = data.Callback
+
+        local kbObj = {}
+        local ok, inner = pcall(function()
+            return tab:Keybind({
+                Title = title,
+                Desc = desc,
+                Value = defVal,
+                Callback = function(key)
+                    if cb then pcall(cb, key) end
+                    if kbObj._callback then pcall(kbObj._callback, key) end
+                end
+            })
+        end)
+
+        function kbObj:Callback(fn)
+            kbObj._callback = fn
+        end
+
+        function kbObj:Set(v)
+            if ok and inner and inner.Set then
+                local n = (typeof(v) == "EnumItem" and v.Name) or tostring(v)
+                pcall(function() inner:Set(n) end)
+            end
+        end
+
+        return kbObj
     end
 
     function tab:AddDropdown(data)
@@ -1406,311 +1385,829 @@ Tab5:AddButton(
 )
 
 -- this under is xeno tab
-
 task.wait()
 local Tab6 = Window:MakeTab({"Xeno Moss", "lucide-zap"})
 
 local Section = Tab6:AddSection({"Xeno Moss"})
 
-Tab6:AddParagraph({
-    "Xeno Moss",
-    "Moss for <font color='rgb(127,0,255)'>Xeno & Solara</font>. Pick your %. Higher % = bigger hitbox."
-})
+Tab6:AddParagraph(
+    {
+        "Xeno Moss",
+        "Moss for <font color='rgb(127,0,255)'>Xeno & Solara</font>. Pick your %. Higher % = bigger hitbox."
+    }
+)
 
-Tab6:AddButton({"Xeno Moss 15%", function(Value)
-local Players=game:GetService("Players")
-local RunService=game:GetService("RunService")
-local player=Players.LocalPlayer
-local BOX_X=2; local BOX_Y=2.8; local BOX_Z=3; local BOX_Y_OFFSET=1.5
+Tab6:AddButton(
+    {
+        "Xeno Moss 15%",
+        function(Value)
+            local Players = game:GetService("Players")
+            local RunService = game:GetService("RunService")
+            local player = Players.LocalPlayer
+            local BOX_X = 2;
+            local BOX_Y = 2.8;
+            local BOX_Z = 3;
+            local BOX_Y_OFFSET = 1.5
 
-local function isBoxTouching(pCF,pSz,tCF,tSz)
-    local pMin=pCF.Position-pSz/2; local pMax=pCF.Position+pSz/2
-    local tMin=tCF.Position-tSz/2; local tMax=tCF.Position+tSz/2
-    return (pMin.X<=tMax.X and pMax.X>=tMin.X) and (pMin.Y<=tMax.Y and pMax.Y>=tMin.Y) and (pMin.Z<=tMax.Z and pMax.Z>=tMin.Z)
-end
+            local function isBoxTouching(pCF, pSz, tCF, tSz)
+                local pMin = pCF.Position - pSz / 2;
+                local pMax = pCF.Position + pSz / 2
+                local tMin = tCF.Position - tSz / 2;
+                local tMax = tCF.Position + tSz / 2
+                return (pMin.X <= tMax.X and pMax.X >= tMin.X) and (pMin.Y <= tMax.Y and pMax.Y >= tMin.Y) and (pMin.Z <= tMax.Z and pMax.Z >= tMin.Z)
+            end
 
-local headerAnim=Instance.new("Animation"); headerAnim.AnimationId="rbxassetid://301501585"
-local currentTrack=nil
+            local headerAnim = Instance.new("Animation");
+            headerAnim.AnimationId = "rbxassetid://301501585"
+            local currentTrack = nil
 
-local function playHeaderAnim()
-    local char=player.Character; if not char then return end
-    local hum=char:FindFirstChildOfClass("Humanoid"); if not hum then return end
-    if currentTrack and currentTrack.IsPlaying then return end
-    pcall(function() currentTrack=hum:LoadAnimation(headerAnim); currentTrack:Play() end)
-end
+            local function playHeaderAnim()
+                local char = player.Character;
+                if not char then
+                    return
+                end
+                local hum = char:FindFirstChildOfClass("Humanoid");
+                if not hum then
+                    return
+                end
+                if currentTrack and currentTrack.IsPlaying then
+                    return
+                end
+                pcall(
+                    function()
+                        currentTrack = hum:LoadAnimation(headerAnim);
+                        currentTrack:Play()
+                    end
+                )
+            end
 
-local function fireKick()
-    local TPSSystem=workspace:FindFirstChild("TPSSystem")
-    local TPS=TPSSystem and TPSSystem:FindFirstChild("TPS"); if not TPS then return end
-    local FE=workspace:FindFirstChild("FE")
-    local remote=FE and FE:FindFirstChild("System") and FE.System:FindFirstChild("Header"); if not remote then return end
-    remote:FireServer(player.UserId,TPS,"Rock'n'roll Star","NeverFearTruth","power=95/100")
-end
+            local function fireKick()
+                local TPSSystem = workspace:FindFirstChild("TPSSystem")
+                local TPS = TPSSystem and TPSSystem:FindFirstChild("TPS");
+                if not TPS then
+                    return
+                end
+                local FE = workspace:FindFirstChild("FE")
+                local remote = FE and FE:FindFirstChild("System") and FE.System:FindFirstChild(
+                    "Header"
+                );
+                if not remote then
+                    return
+                end
+                remote:FireServer(
+                    player.UserId, TPS, "Rock'n'roll Star", "NeverFearTruth", "power=95/100"
+                )
+            end
 
-local mossWasInside=false; local mossCooldown=false
+            local mossWasInside = false;
+            local mossCooldown = false
 
-RunService.Heartbeat:Connect(function()
-    local char=player.Character; if not char then return end
-    local head=char:FindFirstChild("Head"); if not head then return end
-    local hrp=char:FindFirstChild("HumanoidRootPart"); if not hrp then return end
-    local raisedCFrame=head.CFrame*CFrame.new(0,BOX_Y_OFFSET,0)
-    local boxSize=Vector3.new(BOX_X,BOX_Y,BOX_Z)
-    local targets={}
-    local BallsFolder=workspace:FindFirstChild("Balls")
-    if BallsFolder then for _,ball in BallsFolder:GetChildren() do if ball:IsA("BasePart") then table.insert(targets,ball) end end end
-    local TPSSystem=workspace:FindFirstChild("TPSSystem")
-    if TPSSystem then for _,tpsPart in TPSSystem:GetChildren() do if tpsPart:IsA("BasePart") or tpsPart.Name=="TPS" then table.insert(targets,tpsPart) end end end
-    local ballCurrentlyInside=false
-    for _,target in targets do
-        local predictedPos=target.Position+target.Velocity*0.001
-        local predictedCFrame=CFrame.new(predictedPos)*target.CFrame.Rotation
-        if target.Position.Y>=hrp.Position.Y+1 then
-            if isBoxTouching(raisedCFrame,boxSize,predictedCFrame,target.Size) then ballCurrentlyInside=true; break end
+            RunService.Heartbeat:Connect(
+                function()
+                    local char = player.Character;
+                    if not char then
+                        return
+                    end
+                    local head = char:FindFirstChild("Head");
+                    if not head then
+                        return
+                    end
+                    local hrp = char:FindFirstChild("HumanoidRootPart");
+                    if not hrp then
+                        return
+                    end
+                    local raisedCFrame = head.CFrame * CFrame.new(0, BOX_Y_OFFSET, 0)
+                    local boxSize = Vector3.new(BOX_X, BOX_Y, BOX_Z)
+                    local targets = {}
+                    local BallsFolder = workspace:FindFirstChild("Balls")
+                    if BallsFolder then
+                        for _, ball in BallsFolder:GetChildren() do
+                            if ball:IsA("BasePart") then
+                                table.insert(targets, ball)
+                            end
+                        end
+                    end
+                    local TPSSystem = workspace:FindFirstChild("TPSSystem")
+                    if TPSSystem then
+                        for _, tpsPart in TPSSystem:GetChildren() do
+                            if tpsPart:IsA("BasePart") or tpsPart.Name == "TPS" then
+                                table.insert(targets, tpsPart)
+                            end
+                        end
+                    end
+                    local ballCurrentlyInside = false
+                    for _, target in targets do
+                        local predictedPos = target.Position + target.Velocity * 0.001
+                        local predictedCFrame = CFrame.new(predictedPos) * target.CFrame.Rotation
+                        if target.Position.Y >= hrp.Position.Y + 1 then
+                            if isBoxTouching(raisedCFrame, boxSize, predictedCFrame, target.Size) then
+                                ballCurrentlyInside = true;
+                                break
+                            end
+                        end
+                    end
+                    if ballCurrentlyInside and not mossWasInside and not mossCooldown then
+                        mossCooldown = true;
+                        playHeaderAnim();
+                        fireKick()
+                        task.delay(
+                            0.3,
+                            function()
+                                mossCooldown = false
+                            end
+                        )
+                    end
+                    mossWasInside = ballCurrentlyInside
+                end
+            )
         end
-    end
-    if ballCurrentlyInside and not mossWasInside and not mossCooldown then
-        mossCooldown=true; playHeaderAnim(); fireKick()
-        task.delay(0.3,function() mossCooldown=false end)
-    end
-    mossWasInside=ballCurrentlyInside
-end)
-end})
+    }
+)
 
-Tab6:AddButton({"Xeno Moss 25%", function(Value)
-local Players=game:GetService("Players")
-local RunService=game:GetService("RunService")
-local player=Players.LocalPlayer
-local BOX_X=2.5; local BOX_Y=3.2; local BOX_Z=3.3; local BOX_Y_OFFSET=1.5
+Tab6:AddButton(
+    {
+        "Xeno Moss 25%",
+        function(Value)
+            local Players = game:GetService("Players")
+            local RunService = game:GetService("RunService")
+            local player = Players.LocalPlayer
+            local BOX_X = 2.5;
+            local BOX_Y = 3.2;
+            local BOX_Z = 3.3;
+            local BOX_Y_OFFSET = 1.5
 
-local function isBoxTouching(pCF,pSz,tCF,tSz)
-    local pMin=pCF.Position-pSz/2; local pMax=pCF.Position+pSz/2
-    local tMin=tCF.Position-tSz/2; local tMax=tCF.Position+tSz/2
-    return (pMin.X<=tMax.X and pMax.X>=tMin.X) and (pMin.Y<=tMax.Y and pMax.Y>=tMin.Y) and (pMin.Z<=tMax.Z and pMax.Z>=tMin.Z)
-end
+            local function isBoxTouching(pCF, pSz, tCF, tSz)
+                local pMin = pCF.Position - pSz / 2;
+                local pMax = pCF.Position + pSz / 2
+                local tMin = tCF.Position - tSz / 2;
+                local tMax = tCF.Position + tSz / 2
+                return (pMin.X <= tMax.X and pMax.X >= tMin.X) and (pMin.Y <= tMax.Y and pMax.Y >= tMin.Y) and (pMin.Z <= tMax.Z and pMax.Z >= tMin.Z)
+            end
 
-local headerAnim=Instance.new("Animation"); headerAnim.AnimationId="rbxassetid://301501585"
-local currentTrack=nil
+            local headerAnim = Instance.new("Animation");
+            headerAnim.AnimationId = "rbxassetid://301501585"
+            local currentTrack = nil
 
-local function playHeaderAnim()
-    local char=player.Character; if not char then return end
-    local hum=char:FindFirstChildOfClass("Humanoid"); if not hum then return end
-    if currentTrack and currentTrack.IsPlaying then return end
-    pcall(function() currentTrack=hum:LoadAnimation(headerAnim); currentTrack:Play() end)
-end
+            local function playHeaderAnim()
+                local char = player.Character;
+                if not char then
+                    return
+                end
+                local hum = char:FindFirstChildOfClass("Humanoid");
+                if not hum then
+                    return
+                end
+                if currentTrack and currentTrack.IsPlaying then
+                    return
+                end
+                pcall(
+                    function()
+                        currentTrack = hum:LoadAnimation(headerAnim);
+                        currentTrack:Play()
+                    end
+                )
+            end
 
-local function fireKick()
-    local TPSSystem=workspace:FindFirstChild("TPSSystem")
-    local TPS=TPSSystem and TPSSystem:FindFirstChild("TPS"); if not TPS then return end
-    local FE=workspace:FindFirstChild("FE")
-    local remote=FE and FE:FindFirstChild("System") and FE.System:FindFirstChild("Header"); if not remote then return end
-    remote:FireServer(player.UserId,TPS,"Rock'n'roll Star","NeverFearTruth","power=95/100")
-end
+            local function fireKick()
+                local TPSSystem = workspace:FindFirstChild("TPSSystem")
+                local TPS = TPSSystem and TPSSystem:FindFirstChild("TPS");
+                if not TPS then
+                    return
+                end
+                local FE = workspace:FindFirstChild("FE")
+                local remote = FE and FE:FindFirstChild("System") and FE.System:FindFirstChild(
+                    "Header"
+                );
+                if not remote then
+                    return
+                end
+                remote:FireServer(
+                    player.UserId, TPS, "Rock'n'roll Star", "NeverFearTruth", "power=95/100"
+                )
+            end
 
-local mossWasInside=false; local mossCooldown=false
+            local mossWasInside = false;
+            local mossCooldown = false
 
-RunService.Heartbeat:Connect(function()
-    local char=player.Character; if not char then return end
-    local head=char:FindFirstChild("Head"); if not head then return end
-    local hrp=char:FindFirstChild("HumanoidRootPart"); if not hrp then return end
-    local raisedCFrame=head.CFrame*CFrame.new(0,BOX_Y_OFFSET,0)
-    local boxSize=Vector3.new(BOX_X,BOX_Y,BOX_Z)
-    local targets={}
-    local BallsFolder=workspace:FindFirstChild("Balls")
-    if BallsFolder then for _,ball in BallsFolder:GetChildren() do if ball:IsA("BasePart") then table.insert(targets,ball) end end end
-    local TPSSystem=workspace:FindFirstChild("TPSSystem")
-    if TPSSystem then for _,tpsPart in TPSSystem:GetChildren() do if tpsPart:IsA("BasePart") or tpsPart.Name=="TPS" then table.insert(targets,tpsPart) end end end
-    local ballCurrentlyInside=false
-    for _,target in targets do
-        local predictedPos=target.Position+target.Velocity*0.001
-        local predictedCFrame=CFrame.new(predictedPos)*target.CFrame.Rotation
-        if target.Position.Y>=hrp.Position.Y+1 then
-            if isBoxTouching(raisedCFrame,boxSize,predictedCFrame,target.Size) then ballCurrentlyInside=true; break end
+            RunService.Heartbeat:Connect(
+                function()
+                    local char = player.Character;
+                    if not char then
+                        return
+                    end
+                    local head = char:FindFirstChild("Head");
+                    if not head then
+                        return
+                    end
+                    local hrp = char:FindFirstChild("HumanoidRootPart");
+                    if not hrp then
+                        return
+                    end
+                    local raisedCFrame = head.CFrame * CFrame.new(0, BOX_Y_OFFSET, 0)
+                    local boxSize = Vector3.new(BOX_X, BOX_Y, BOX_Z)
+                    local targets = {}
+                    local BallsFolder = workspace:FindFirstChild("Balls")
+                    if BallsFolder then
+                        for _, ball in BallsFolder:GetChildren() do
+                            if ball:IsA("BasePart") then
+                                table.insert(targets, ball)
+                            end
+                        end
+                    end
+                    local TPSSystem = workspace:FindFirstChild("TPSSystem")
+                    if TPSSystem then
+                        for _, tpsPart in TPSSystem:GetChildren() do
+                            if tpsPart:IsA("BasePart") or tpsPart.Name == "TPS" then
+                                table.insert(targets, tpsPart)
+                            end
+                        end
+                    end
+                    local ballCurrentlyInside = false
+                    for _, target in targets do
+                        local predictedPos = target.Position + target.Velocity * 0.001
+                        local predictedCFrame = CFrame.new(predictedPos) * target.CFrame.Rotation
+                        if target.Position.Y >= hrp.Position.Y + 1 then
+                            if isBoxTouching(raisedCFrame, boxSize, predictedCFrame, target.Size) then
+                                ballCurrentlyInside = true;
+                                break
+                            end
+                        end
+                    end
+                    if ballCurrentlyInside and not mossWasInside and not mossCooldown then
+                        mossCooldown = true;
+                        playHeaderAnim();
+                        fireKick()
+                        task.delay(
+                            0.3,
+                            function()
+                                mossCooldown = false
+                            end
+                        )
+                    end
+                    mossWasInside = ballCurrentlyInside
+                end
+            )
         end
-    end
-    if ballCurrentlyInside and not mossWasInside and not mossCooldown then
-        mossCooldown=true; playHeaderAnim(); fireKick()
-        task.delay(0.3,function() mossCooldown=false end)
-    end
-    mossWasInside=ballCurrentlyInside
-end)
-end})
+    }
+)
 
-Tab6:AddButton({"Xeno Moss 50%", function(Value)
-local Players=game:GetService("Players")
-local RunService=game:GetService("RunService")
-local player=Players.LocalPlayer
-local BOX_X=3; local BOX_Y=3.8; local BOX_Z=3.6; local BOX_Y_OFFSET=1.5
+Tab6:AddButton(
+    {
+        "Xeno Moss 50%",
+        function(Value)
+            local Players = game:GetService("Players")
+            local RunService = game:GetService("RunService")
+            local player = Players.LocalPlayer
+            local BOX_X = 3;
+            local BOX_Y = 3.8;
+            local BOX_Z = 3.6;
+            local BOX_Y_OFFSET = 1.5
 
-local function isBoxTouching(pCF,pSz,tCF,tSz)
-    local pMin=pCF.Position-pSz/2; local pMax=pCF.Position+pSz/2
-    local tMin=tCF.Position-tSz/2; local tMax=tCF.Position+tSz/2
-    return (pMin.X<=tMax.X and pMax.X>=tMin.X) and (pMin.Y<=tMax.Y and pMax.Y>=tMin.Y) and (pMin.Z<=tMax.Z and pMax.Z>=tMin.Z)
-end
+            local function isBoxTouching(pCF, pSz, tCF, tSz)
+                local pMin = pCF.Position - pSz / 2;
+                local pMax = pCF.Position + pSz / 2
+                local tMin = tCF.Position - tSz / 2;
+                local tMax = tCF.Position + tSz / 2
+                return (pMin.X <= tMax.X and pMax.X >= tMin.X) and (pMin.Y <= tMax.Y and pMax.Y >= tMin.Y) and (pMin.Z <= tMax.Z and pMax.Z >= tMin.Z)
+            end
 
-local headerAnim=Instance.new("Animation"); headerAnim.AnimationId="rbxassetid://301501585"
-local currentTrack=nil
+            local headerAnim = Instance.new("Animation");
+            headerAnim.AnimationId = "rbxassetid://301501585"
+            local currentTrack = nil
 
-local function playHeaderAnim()
-    local char=player.Character; if not char then return end
-    local hum=char:FindFirstChildOfClass("Humanoid"); if not hum then return end
-    if currentTrack and currentTrack.IsPlaying then return end
-    pcall(function() currentTrack=hum:LoadAnimation(headerAnim); currentTrack:Play() end)
-end
+            local function playHeaderAnim()
+                local char = player.Character;
+                if not char then
+                    return
+                end
+                local hum = char:FindFirstChildOfClass("Humanoid");
+                if not hum then
+                    return
+                end
+                if currentTrack and currentTrack.IsPlaying then
+                    return
+                end
+                pcall(
+                    function()
+                        currentTrack = hum:LoadAnimation(headerAnim);
+                        currentTrack:Play()
+                    end
+                )
+            end
 
-local function fireKick()
-    local TPSSystem=workspace:FindFirstChild("TPSSystem")
-    local TPS=TPSSystem and TPSSystem:FindFirstChild("TPS"); if not TPS then return end
-    local FE=workspace:FindFirstChild("FE")
-    local remote=FE and FE:FindFirstChild("System") and FE.System:FindFirstChild("Header"); if not remote then return end
-    remote:FireServer(player.UserId,TPS,"Rock'n'roll Star","NeverFearTruth","power=95/100")
-end
+            local function fireKick()
+                local TPSSystem = workspace:FindFirstChild("TPSSystem")
+                local TPS = TPSSystem and TPSSystem:FindFirstChild("TPS");
+                if not TPS then
+                    return
+                end
+                local FE = workspace:FindFirstChild("FE")
+                local remote = FE and FE:FindFirstChild("System") and FE.System:FindFirstChild(
+                    "Header"
+                );
+                if not remote then
+                    return
+                end
+                remote:FireServer(
+                    player.UserId, TPS, "Rock'n'roll Star", "NeverFearTruth", "power=95/100"
+                )
+            end
 
-local mossWasInside=false; local mossCooldown=false
+            local mossWasInside = false;
+            local mossCooldown = false
 
-RunService.Heartbeat:Connect(function()
-    local char=player.Character; if not char then return end
-    local head=char:FindFirstChild("Head"); if not head then return end
-    local hrp=char:FindFirstChild("HumanoidRootPart"); if not hrp then return end
-    local raisedCFrame=head.CFrame*CFrame.new(0,BOX_Y_OFFSET,0)
-    local boxSize=Vector3.new(BOX_X,BOX_Y,BOX_Z)
-    local targets={}
-    local BallsFolder=workspace:FindFirstChild("Balls")
-    if BallsFolder then for _,ball in BallsFolder:GetChildren() do if ball:IsA("BasePart") then table.insert(targets,ball) end end end
-    local TPSSystem=workspace:FindFirstChild("TPSSystem")
-    if TPSSystem then for _,tpsPart in TPSSystem:GetChildren() do if tpsPart:IsA("BasePart") or tpsPart.Name=="TPS" then table.insert(targets,tpsPart) end end end
-    local ballCurrentlyInside=false
-    for _,target in targets do
-        local predictedPos=target.Position+target.Velocity*0.001
-        local predictedCFrame=CFrame.new(predictedPos)*target.CFrame.Rotation
-        if target.Position.Y>=hrp.Position.Y+1 then
-            if isBoxTouching(raisedCFrame,boxSize,predictedCFrame,target.Size) then ballCurrentlyInside=true; break end
+            RunService.Heartbeat:Connect(
+                function()
+                    local char = player.Character;
+                    if not char then
+                        return
+                    end
+                    local head = char:FindFirstChild("Head");
+                    if not head then
+                        return
+                    end
+                    local hrp = char:FindFirstChild("HumanoidRootPart");
+                    if not hrp then
+                        return
+                    end
+                    local raisedCFrame = head.CFrame * CFrame.new(0, BOX_Y_OFFSET, 0)
+                    local boxSize = Vector3.new(BOX_X, BOX_Y, BOX_Z)
+                    local targets = {}
+                    local BallsFolder = workspace:FindFirstChild("Balls")
+                    if BallsFolder then
+                        for _, ball in BallsFolder:GetChildren() do
+                            if ball:IsA("BasePart") then
+                                table.insert(targets, ball)
+                            end
+                        end
+                    end
+                    local TPSSystem = workspace:FindFirstChild("TPSSystem")
+                    if TPSSystem then
+                        for _, tpsPart in TPSSystem:GetChildren() do
+                            if tpsPart:IsA("BasePart") or tpsPart.Name == "TPS" then
+                                table.insert(targets, tpsPart)
+                            end
+                        end
+                    end
+                    local ballCurrentlyInside = false
+                    for _, target in targets do
+                        local predictedPos = target.Position + target.Velocity * 0.001
+                        local predictedCFrame = CFrame.new(predictedPos) * target.CFrame.Rotation
+                        if target.Position.Y >= hrp.Position.Y + 1 then
+                            if isBoxTouching(raisedCFrame, boxSize, predictedCFrame, target.Size) then
+                                ballCurrentlyInside = true;
+                                break
+                            end
+                        end
+                    end
+                    if ballCurrentlyInside and not mossWasInside and not mossCooldown then
+                        mossCooldown = true;
+                        playHeaderAnim();
+                        fireKick()
+                        task.delay(
+                            0.3,
+                            function()
+                                mossCooldown = false
+                            end
+                        )
+                    end
+                    mossWasInside = ballCurrentlyInside
+                end
+            )
         end
-    end
-    if ballCurrentlyInside and not mossWasInside and not mossCooldown then
-        mossCooldown=true; playHeaderAnim(); fireKick()
-        task.delay(0.3,function() mossCooldown=false end)
-    end
-    mossWasInside=ballCurrentlyInside
-end)
-end})
+    }
+)
 
-Tab6:AddButton({"Xeno Moss 75%", function(Value)
-local Players=game:GetService("Players")
-local RunService=game:GetService("RunService")
-local player=Players.LocalPlayer
-local BOX_X=3.5; local BOX_Y=4.5; local BOX_Z=4.1; local BOX_Y_OFFSET=1.5
+Tab6:AddButton(
+    {
+        "Xeno Moss 75%",
+        function(Value)
+            local Players = game:GetService("Players")
+            local RunService = game:GetService("RunService")
+            local player = Players.LocalPlayer
+            local BOX_X = 3.5;
+            local BOX_Y = 4.5;
+            local BOX_Z = 4.1;
+            local BOX_Y_OFFSET = 1.5
 
-local function isBoxTouching(pCF,pSz,tCF,tSz)
-    local pMin=pCF.Position-pSz/2; local pMax=pCF.Position+pSz/2
-    local tMin=tCF.Position-tSz/2; local tMax=tCF.Position+tSz/2
-    return (pMin.X<=tMax.X and pMax.X>=tMin.X) and (pMin.Y<=tMax.Y and pMax.Y>=tMin.Y) and (pMin.Z<=tMax.Z and pMax.Z>=tMin.Z)
-end
+            local function isBoxTouching(pCF, pSz, tCF, tSz)
+                local pMin = pCF.Position - pSz / 2;
+                local pMax = pCF.Position + pSz / 2
+                local tMin = tCF.Position - tSz / 2;
+                local tMax = tCF.Position + tSz / 2
+                return (pMin.X <= tMax.X and pMax.X >= tMin.X) and (pMin.Y <= tMax.Y and pMax.Y >= tMin.Y) and (pMin.Z <= tMax.Z and pMax.Z >= tMin.Z)
+            end
 
-local headerAnim=Instance.new("Animation"); headerAnim.AnimationId="rbxassetid://301501585"
-local currentTrack=nil
+            local headerAnim = Instance.new("Animation");
+            headerAnim.AnimationId = "rbxassetid://301501585"
+            local currentTrack = nil
 
-local function playHeaderAnim()
-    local char=player.Character; if not char then return end
-    local hum=char:FindFirstChildOfClass("Humanoid"); if not hum then return end
-    if currentTrack and currentTrack.IsPlaying then return end
-    pcall(function() currentTrack=hum:LoadAnimation(headerAnim); currentTrack:Play() end)
-end
+            local function playHeaderAnim()
+                local char = player.Character;
+                if not char then
+                    return
+                end
+                local hum = char:FindFirstChildOfClass("Humanoid");
+                if not hum then
+                    return
+                end
+                if currentTrack and currentTrack.IsPlaying then
+                    return
+                end
+                pcall(
+                    function()
+                        currentTrack = hum:LoadAnimation(headerAnim);
+                        currentTrack:Play()
+                    end
+                )
+            end
 
-local function fireKick()
-    local TPSSystem=workspace:FindFirstChild("TPSSystem")
-    local TPS=TPSSystem and TPSSystem:FindFirstChild("TPS"); if not TPS then return end
-    local FE=workspace:FindFirstChild("FE")
-    local remote=FE and FE:FindFirstChild("System") and FE.System:FindFirstChild("Header"); if not remote then return end
-    remote:FireServer(player.UserId,TPS,"Rock'n'roll Star","NeverFearTruth","power=95/100")
-end
+            local function fireKick()
+                local TPSSystem = workspace:FindFirstChild("TPSSystem")
+                local TPS = TPSSystem and TPSSystem:FindFirstChild("TPS");
+                if not TPS then
+                    return
+                end
+                local FE = workspace:FindFirstChild("FE")
+                local remote = FE and FE:FindFirstChild("System") and FE.System:FindFirstChild(
+                    "Header"
+                );
+                if not remote then
+                    return
+                end
+                remote:FireServer(
+                    player.UserId, TPS, "Rock'n'roll Star", "NeverFearTruth", "power=95/100"
+                )
+            end
 
-local mossWasInside=false; local mossCooldown=false
+            local mossWasInside = false;
+            local mossCooldown = false
 
-RunService.Heartbeat:Connect(function()
-    local char=player.Character; if not char then return end
-    local head=char:FindFirstChild("Head"); if not head then return end
-    local hrp=char:FindFirstChild("HumanoidRootPart"); if not hrp then return end
-    local raisedCFrame=head.CFrame*CFrame.new(0,BOX_Y_OFFSET,0)
-    local boxSize=Vector3.new(BOX_X,BOX_Y,BOX_Z)
-    local targets={}
-    local BallsFolder=workspace:FindFirstChild("Balls")
-    if BallsFolder then for _,ball in BallsFolder:GetChildren() do if ball:IsA("BasePart") then table.insert(targets,ball) end end end
-    local TPSSystem=workspace:FindFirstChild("TPSSystem")
-    if TPSSystem then for _,tpsPart in TPSSystem:GetChildren() do if tpsPart:IsA("BasePart") or tpsPart.Name=="TPS" then table.insert(targets,tpsPart) end end end
-    local ballCurrentlyInside=false
-    for _,target in targets do
-        local predictedPos=target.Position+target.Velocity*0.001
-        local predictedCFrame=CFrame.new(predictedPos)*target.CFrame.Rotation
-        if target.Position.Y>=hrp.Position.Y+1 then
-            if isBoxTouching(raisedCFrame,boxSize,predictedCFrame,target.Size) then ballCurrentlyInside=true; break end
+            RunService.Heartbeat:Connect(
+                function()
+                    local char = player.Character;
+                    if not char then
+                        return
+                    end
+                    local head = char:FindFirstChild("Head");
+                    if not head then
+                        return
+                    end
+                    local hrp = char:FindFirstChild("HumanoidRootPart");
+                    if not hrp then
+                        return
+                    end
+                    local raisedCFrame = head.CFrame * CFrame.new(0, BOX_Y_OFFSET, 0)
+                    local boxSize = Vector3.new(BOX_X, BOX_Y, BOX_Z)
+                    local targets = {}
+                    local BallsFolder = workspace:FindFirstChild("Balls")
+                    if BallsFolder then
+                        for _, ball in BallsFolder:GetChildren() do
+                            if ball:IsA("BasePart") then
+                                table.insert(targets, ball)
+                            end
+                        end
+                    end
+                    local TPSSystem = workspace:FindFirstChild("TPSSystem")
+                    if TPSSystem then
+                        for _, tpsPart in TPSSystem:GetChildren() do
+                            if tpsPart:IsA("BasePart") or tpsPart.Name == "TPS" then
+                                table.insert(targets, tpsPart)
+                            end
+                        end
+                    end
+                    local ballCurrentlyInside = false
+                    for _, target in targets do
+                        local predictedPos = target.Position + target.Velocity * 0.001
+                        local predictedCFrame = CFrame.new(predictedPos) * target.CFrame.Rotation
+                        if target.Position.Y >= hrp.Position.Y + 1 then
+                            if isBoxTouching(raisedCFrame, boxSize, predictedCFrame, target.Size) then
+                                ballCurrentlyInside = true;
+                                break
+                            end
+                        end
+                    end
+                    if ballCurrentlyInside and not mossWasInside and not mossCooldown then
+                        mossCooldown = true;
+                        playHeaderAnim();
+                        fireKick()
+                        task.delay(
+                            0.3,
+                            function()
+                                mossCooldown = false
+                            end
+                        )
+                    end
+                    mossWasInside = ballCurrentlyInside
+                end
+            )
         end
-    end
-    if ballCurrentlyInside and not mossWasInside and not mossCooldown then
-        mossCooldown=true; playHeaderAnim(); fireKick()
-        task.delay(0.3,function() mossCooldown=false end)
-    end
-    mossWasInside=ballCurrentlyInside
-end)
-end})
+    }
+)
 
-Tab6:AddButton({"Xeno Moss 100%", function(Value)
-local Players=game:GetService("Players")
-local RunService=game:GetService("RunService")
-local player=Players.LocalPlayer
-local BOX_X=4; local BOX_Y=5; local BOX_Z=4.5; local BOX_Y_OFFSET=1.5
+Tab6:AddButton(
+    {
+        "Xeno Moss 100%",
+        function(Value)
+            local Players = game:GetService("Players")
+            local RunService = game:GetService("RunService")
+            local player = Players.LocalPlayer
+            local BOX_X = 4;
+            local BOX_Y = 5;
+            local BOX_Z = 4.5;
+            local BOX_Y_OFFSET = 1.5
 
-local function isBoxTouching(pCF,pSz,tCF,tSz)
-    local pMin=pCF.Position-pSz/2; local pMax=pCF.Position+pSz/2
-    local tMin=tCF.Position-tSz/2; local tMax=tCF.Position+tSz/2
-    return (pMin.X<=tMax.X and pMax.X>=tMin.X) and (pMin.Y<=tMax.Y and pMax.Y>=tMin.Y) and (pMin.Z<=tMax.Z and pMax.Z>=tMin.Z)
-end
+            local function isBoxTouching(pCF, pSz, tCF, tSz)
+                local pMin = pCF.Position - pSz / 2;
+                local pMax = pCF.Position + pSz / 2
+                local tMin = tCF.Position - tSz / 2;
+                local tMax = tCF.Position + tSz / 2
+                return (pMin.X <= tMax.X and pMax.X >= tMin.X) and (pMin.Y <= tMax.Y and pMax.Y >= tMin.Y) and (pMin.Z <= tMax.Z and pMax.Z >= tMin.Z)
+            end
 
-local headerAnim=Instance.new("Animation"); headerAnim.AnimationId="rbxassetid://301501585"
-local currentTrack=nil
+            local headerAnim = Instance.new("Animation");
+            headerAnim.AnimationId = "rbxassetid://301501585"
+            local currentTrack = nil
 
-local function playHeaderAnim()
-    local char=player.Character; if not char then return end
-    local hum=char:FindFirstChildOfClass("Humanoid"); if not hum then return end
-    if currentTrack and currentTrack.IsPlaying then return end
-    pcall(function() currentTrack=hum:LoadAnimation(headerAnim); currentTrack:Play() end)
-end
+            local function playHeaderAnim()
+                local char = player.Character;
+                if not char then
+                    return
+                end
+                local hum = char:FindFirstChildOfClass("Humanoid");
+                if not hum then
+                    return
+                end
+                if currentTrack and currentTrack.IsPlaying then
+                    return
+                end
+                pcall(
+                    function()
+                        currentTrack = hum:LoadAnimation(headerAnim);
+                        currentTrack:Play()
+                    end
+                )
+            end
 
-local function fireKick()
-    local TPSSystem=workspace:FindFirstChild("TPSSystem")
-    local TPS=TPSSystem and TPSSystem:FindFirstChild("TPS"); if not TPS then return end
-    local FE=workspace:FindFirstChild("FE")
-    local remote=FE and FE:FindFirstChild("System") and FE.System:FindFirstChild("Header"); if not remote then return end
-    remote:FireServer(player.UserId,TPS,"Rock'n'roll Star","NeverFearTruth","power=95/100")
-end
+            local function fireKick()
+                local TPSSystem = workspace:FindFirstChild("TPSSystem")
+                local TPS = TPSSystem and TPSSystem:FindFirstChild("TPS");
+                if not TPS then
+                    return
+                end
+                local FE = workspace:FindFirstChild("FE")
+                local remote = FE and FE:FindFirstChild("System") and FE.System:FindFirstChild(
+                    "Header"
+                );
+                if not remote then
+                    return
+                end
+                remote:FireServer(
+                    player.UserId, TPS, "Rock'n'roll Star", "NeverFearTruth", "power=95/100"
+                )
+            end
 
-local mossWasInside=false; local mossCooldown=false
+            local mossWasInside = false;
+            local mossCooldown = false
 
-RunService.Heartbeat:Connect(function()
-    local char=player.Character; if not char then return end
-    local head=char:FindFirstChild("Head"); if not head then return end
-    local hrp=char:FindFirstChild("HumanoidRootPart"); if not hrp then return end
-    local raisedCFrame=head.CFrame*CFrame.new(0,BOX_Y_OFFSET,0)
-    local boxSize=Vector3.new(BOX_X,BOX_Y,BOX_Z)
-    local targets={}
-    local BallsFolder=workspace:FindFirstChild("Balls")
-    if BallsFolder then for _,ball in BallsFolder:GetChildren() do if ball:IsA("BasePart") then table.insert(targets,ball) end end end
-    local TPSSystem=workspace:FindFirstChild("TPSSystem")
-    if TPSSystem then for _,tpsPart in TPSSystem:GetChildren() do if tpsPart:IsA("BasePart") or tpsPart.Name=="TPS" then table.insert(targets,tpsPart) end end end
-    local ballCurrentlyInside=false
-    for _,target in targets do
-        local predictedPos=target.Position+target.Velocity*0.001
-        local predictedCFrame=CFrame.new(predictedPos)*target.CFrame.Rotation
-        if target.Position.Y>=hrp.Position.Y+1 then
-            if isBoxTouching(raisedCFrame,boxSize,predictedCFrame,target.Size) then ballCurrentlyInside=true; break end
+            RunService.Heartbeat:Connect(
+                function()
+                    local char = player.Character;
+                    if not char then
+                        return
+                    end
+                    local head = char:FindFirstChild("Head");
+                    if not head then
+                        return
+                    end
+                    local hrp = char:FindFirstChild("HumanoidRootPart");
+                    if not hrp then
+                        return
+                    end
+                    local raisedCFrame = head.CFrame * CFrame.new(0, BOX_Y_OFFSET, 0)
+                    local boxSize = Vector3.new(BOX_X, BOX_Y, BOX_Z)
+                    local targets = {}
+                    local BallsFolder = workspace:FindFirstChild("Balls")
+                    if BallsFolder then
+                        for _, ball in BallsFolder:GetChildren() do
+                            if ball:IsA("BasePart") then
+                                table.insert(targets, ball)
+                            end
+                        end
+                    end
+                    local TPSSystem = workspace:FindFirstChild("TPSSystem")
+                    if TPSSystem then
+                        for _, tpsPart in TPSSystem:GetChildren() do
+                            if tpsPart:IsA("BasePart") or tpsPart.Name == "TPS" then
+                                table.insert(targets, tpsPart)
+                            end
+                        end
+                    end
+                    local ballCurrentlyInside = false
+                    for _, target in targets do
+                        local predictedPos = target.Position + target.Velocity * 0.001
+                        local predictedCFrame = CFrame.new(predictedPos) * target.CFrame.Rotation
+                        if target.Position.Y >= hrp.Position.Y + 1 then
+                            if isBoxTouching(raisedCFrame, boxSize, predictedCFrame, target.Size) then
+                                ballCurrentlyInside = true;
+                                break
+                            end
+                        end
+                    end
+                    if ballCurrentlyInside and not mossWasInside and not mossCooldown then
+                        mossCooldown = true;
+                        playHeaderAnim();
+                        fireKick()
+                        task.delay(
+                            0.3,
+                            function()
+                                mossCooldown = false
+                            end
+                        )
+                    end
+                    mossWasInside = ballCurrentlyInside
+                end
+            )
         end
+    }
+)
+local Tab6 = Window:MakeTab({"Flag Func", "lucide-settings-2"})
+Tab6:AddSection({"Flag Override"})
+
+local _flags = {tt = "4", interp = "60", s2 = "38720"}
+local _thread = nil
+
+local function strip(k)
+    return k:gsub("^DFInt", ""):gsub("^DFFlag", ""):gsub("FString", ""):gsub("FLog", ""):gsub(
+        "^FFlag", ""
+    ):gsub("^DFint", ""):gsub("^FInt", "")
+end
+
+local function apply()
+    if not setfflag then
+        return
     end
-    if ballCurrentlyInside and not mossWasInside and not mossCooldown then
-        mossCooldown=true; playHeaderAnim(); fireKick()
-        task.delay(0.3,function() mossCooldown=false end)
+    for raw, val in pairs(
+        {
+            ["DFIntTargetTimeDelayFacctorTenths"] = _flags.tt,
+            ["FIntInterpolationMaxDelayMSec"] = _flags.interp,
+            ["DFIntS2PhysicsSenderRate"] = _flags.s2,
+        }
+    ) do
+        local ck = strip(raw)
+        pcall(
+            function()
+                if getfflag(ck) ~= nil then
+                    setfflag(ck, val)
+                elseif getfflag(raw) ~= nil then
+                    setfflag(raw, val)
+                end
+            end
+        )
     end
-    mossWasInside=ballCurrentlyInside
-end)
-end})
+end
+
+Tab6:AddTextBox(
+    {
+        Name = "TargetTimeDelay", Description = "DFIntTargetTimeDelayFacctorTenths",
+        PlaceholderText = "e.g. 4",
+        Callback = function(v)
+            if v and v ~= "" then
+                _flags.tt = v
+            end
+        end
+    }
+)
+
+Tab6:AddTextBox(
+    {
+        Name = "Interpolation", Description = "FIntInterpolationMaxDelayMSec",
+        PlaceholderText = "e.g. 60",
+        Callback = function(v)
+            if v and v ~= "" then
+                _flags.interp = v
+            end
+        end
+    }
+)
+
+Tab6:AddTextBox(
+    {
+        Name = "PhysicsSenderRate", Description = "DFIntS2PhysicsSenderRate",
+        PlaceholderText = "e.g. 38720",
+        Callback = function(v)
+            if v and v ~= "" then
+                _flags.s2 = v
+            end
+        end
+    }
+)
+
+Tab6:AddButton(
+    {
+        "Apply & Lock",
+        function()
+            if _thread then
+                task.cancel(_thread)
+            end
+            _thread = task.spawn(
+                function()
+                    while true do
+                        apply()
+                        task.wait(2)
+                    end
+                end
+            )
+        end
+    }
+)
+
+Tab6:AddButton(
+    {
+        "Unlock",
+        function()
+            if _thread then
+                task.cancel(_thread);
+                _thread = nil
+            end
+        end
+    }
+)
+
+Tab6:AddSection({"Flag Inject"})
+Tab6:AddParagraph(
+    {
+        "Flag Inject",
+        "Paste your JSON flags below. Supports any amount. Format: {\"FlagName\":\"value\"}"
+    }
+)
+
+local _injectThread = nil
+local _injectFlags = {}
+
+Tab6:AddTextBox(
+    {
+        Name = "Flag JSON", Description = "Paste full JSON here",
+        PlaceholderText = '{"DFIntTargetTimeDelayFacctorTenths":"7","FIntInterpolationMaxDelayMSec":"60"}',
+        Callback = function(v)
+            if not v or v == "" then
+                return
+            end
+            local ok, decoded = pcall(
+                function()
+                    return game:GetService("HttpService"):JSONDecode(v)
+                end
+            )
+            if ok and type(decoded) == "table" then
+                _injectFlags = decoded
+            end
+        end
+    }
+)
+
+Tab6:AddButton(
+    {
+        "Inject & Lock All",
+        function()
+            if _injectThread then
+                task.cancel(_injectThread)
+            end
+            _injectThread = task.spawn(
+                function()
+                    while true do
+                        if setfflag then
+                            for k, v in pairs(_injectFlags) do
+                                local ck = strip(k)
+                                pcall(
+                                    function()
+                                        if getfflag(ck) ~= nil then
+                                            setfflag(ck, tostring(v))
+                                        elseif getfflag(k) ~= nil then
+                                            setfflag(k, tostring(v))
+                                        end
+                                    end
+                                )
+                            end
+                        end
+                        task.wait(10)
+                    end
+                end
+            )
+        end
+    }
+)
+
+Tab6:AddButton(
+    {
+        "Stop Inject",
+        function()
+            if _injectThread then
+                task.cancel(_injectThread);
+                _injectThread = nil
+            end
+        end
+    }
+)
 
 -- ==============================================================================
 -- FLAG FUNC (Hybrid Engine & FFlag Implementation - 100% Working)
@@ -2515,6 +3012,10 @@ local function collectConfigData()
         HeadReach = {
             Enabled = sr_enabled,
             Distance = sr_distance
+        },
+        UI = {
+            FloatingIcon = floatingIconEnabled,
+            ToggleKey = currentToggleKey.Name
         }
     }
 end
@@ -2565,6 +3066,28 @@ local function applyConfigData(data)
             sr_enabled = data.HeadReach.Enabled and true or false
         end
         applyHeadReachSettings()
+    end
+
+    -- UI Settings (Floating Icon & Keybind)
+    if data.UI and type(data.UI) == "table" then
+        if data.UI.FloatingIcon ~= nil then
+            floatingIconEnabled = (data.UI.FloatingIcon == true)
+            if floatingToggleUI and floatingToggleUI.Set then
+                pcall(function() floatingToggleUI:Set(floatingIconEnabled) end)
+            end
+            updateFloatingIconVisibility()
+        end
+        if data.UI.ToggleKey and Enum.KeyCode[data.UI.ToggleKey] then
+            currentToggleKey = Enum.KeyCode[data.UI.ToggleKey]
+            pcall(function()
+                if Window and Window.SetToggleKey then
+                    Window:SetToggleKey(currentToggleKey)
+                end
+            end)
+            if keybindInputUI and keybindInputUI.Set then
+                pcall(function() keybindInputUI:Set(data.UI.ToggleKey) end)
+            end
+        end
     end
 
     updateUIElements()
@@ -2698,8 +3221,100 @@ local function resetAllSettings()
     applyHeadReachSettings()
 
     updateUIElements()
+        floatingIconEnabled = not isPC
+    if floatingToggleUI and floatingToggleUI.Set then
+        pcall(function() floatingToggleUI:Set(floatingIconEnabled) end)
+    end
+    updateFloatingIconVisibility()
+
+    currentToggleKey = Enum.KeyCode.RightShift
+    pcall(function()
+        if Window and Window.SetToggleKey then
+            Window:SetToggleKey(currentToggleKey)
+        end
+    end)
+    if keybindInputUI and keybindInputUI.Set then
+        pcall(function() keybindInputUI:Set("RightShift") end)
+    end
+
     notify("Reset Complete", "All settings restored to defaults", "rotate-ccw")
 end
+
+-- UI Controls & Keybind Settings
+TabSettings:AddSection({"UI Controls & Display"})
+TabSettings:AddParagraph({
+    "Menu Controls",
+    "1. Show or hide the on-screen floating ghost icon.\n2. Customize your open/close key (Default: RightShift)."
+})
+
+floatingToggleUI = TabSettings:AddToggle({
+    Name = "Show Floating Icon",
+    Description = "Toggle the floating ghost icon on/off on screen",
+    Default = floatingIconEnabled,
+    Callback = function(v)
+        floatingIconEnabled = (v == true)
+        updateFloatingIconVisibility()
+        if floatingIconEnabled then
+            notify("Floating Icon", "Floating ghost button enabled", "eye")
+        else
+            notify("Floating Icon", "Floating ghost button hidden", "eye-off")
+        end
+    end
+})
+
+keybindInputUI = TabSettings:AddKeybind({
+    Name = "Open / Close Keybind",
+    Description = "Click and press any key to set menu toggle key (Default: RightShift)",
+    Default = currentToggleKey.Name,
+    Callback = function(key)
+        local keyName = (typeof(key) == "EnumItem" and key.Name) or tostring(key)
+        local resolved = Enum.KeyCode[keyName]
+        if resolved then
+            currentToggleKey = resolved
+            pcall(function()
+                if Window and Window.SetToggleKey then
+                    Window:SetToggleKey(resolved)
+                end
+            end)
+            notify("Keybind Updated", "Toggle key set to: " .. keyName, "key")
+        end
+    end
+})
+
+local commonKeybindList = {
+    "RightShift",
+    "LeftControl",
+    "RightControl",
+    "Insert",
+    "Home",
+    "Delete",
+    "F4",
+    "F8",
+    "F10",
+    "P",
+    "M"
+}
+
+TabSettings:AddDropdown({
+    Name = "Keybind Preset",
+    Description = "Quick selection for popular open/close keys",
+    Options = commonKeybindList,
+    Default = currentToggleKey.Name,
+    Callback = function(k)
+        if k and Enum.KeyCode[k] then
+            currentToggleKey = Enum.KeyCode[k]
+            pcall(function()
+                if Window and Window.SetToggleKey then
+                    Window:SetToggleKey(currentToggleKey)
+                end
+            end)
+            if keybindInputUI and keybindInputUI.Set then
+                pcall(function() keybindInputUI:Set(k) end)
+            end
+            notify("Keybind Changed", "Toggle key set to: " .. k, "key")
+        end
+    end
+})
 
 -- UI Controls for Settings
 TabSettings:AddTextBox({
