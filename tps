@@ -206,7 +206,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
 end)
 
--- Draggable On-Screen Floating Button (Mobile & PC)
+-- Draggable On-Screen Floating Button (Mobile Only - Hidden on PC)
 task.spawn(function()
     local parentGui
     pcall(function()
@@ -224,6 +224,12 @@ task.spawn(function()
         local old = parentGui:FindFirstChild("SpecterToggleGui")
         if old then old:Destroy() end
     end)
+
+    -- Hide floating icon on PC (PC opens and closes via RightShift)
+    -- Only spawn the floating button on phone / mobile touch devices
+    if UserInputService.KeyboardEnabled and UserInputService.MouseEnabled then
+        return
+    end
 
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "SpecterToggleGui"
