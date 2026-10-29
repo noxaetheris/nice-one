@@ -1314,65 +1314,90 @@ TabHeadReach:AddButton({"100%", function() headPreset("7","0","60", 4.0,3.5,6.0,
 TabHeadReach:AddButton({"Stop Moss", function() hrActive = false; pcall(function() if WindUI and WindUI.Notify then WindUI:Notify({Title="Head Reach", Content="Stopped", Duration=2}) end end) end})
 
 -- ==============================================================================
--- REACT (MiddleNight React with Classic, Named & Control)
+-- REACT
 -- ==============================================================================
 task.wait()
 local Tab5 = Window:MakeTab({"React", "lucide-smile-plus"})
-Tab5:AddSection({"React Presets"})
-Tab5:AddParagraph({"React Speed", "Choose your preferred react speed. Automatically re-applies every 0.5s cleanly."})
+Tab5:AddSection({"React"})
+Tab5:AddParagraph({"React", "15% = highest delay (safer), 100% = lowest delay (most aggressive)."})
 
-local rcActive = false
-local rcTT, rcInterp = "13", "90"
-
-local function rcStrip(k)
-    return k:gsub("^DFInt",""):gsub("^DFFlag",""):gsub("FString",""):gsub("FLog",""):gsub("^FFlag",""):gsub("^DFint",""):gsub("^FInt","")
-end
-local function rcSet(name,val)
-    if not setfflag then return end
-    pcall(function()
-        local ck = rcStrip(name)
-        if getfflag and getfflag(ck)~=nil then setfflag(ck,tostring(val))
-        elseif getfflag and getfflag(name)~=nil then setfflag(name,tostring(val)) end
-    end)
-end
-
-task.spawn(function()
-    while true do
-        if rcActive then
-            rcSet("DFIntTargetTimeDelayFacctorTenths", rcTT)
-            rcSet("FIntInterpolationMaxDelayMSec", rcInterp)
+local function applyReact(tt, interp)
+    local function strip(k)
+        return k:gsub("^DFInt", ""):gsub("^DFFlag", ""):gsub("FString", ""):gsub("FLog", ""):gsub(
+            "^FFlag", ""
+        ):gsub("^DFint", ""):gsub("^FInt", "")
+    end
+    task.spawn(
+        function()
+            local flags = {
+                ["DFIntTargetTimeDelayFacctorTenths"] = tt,
+                ["FIntInterpolationMaxDelayMSec"] = interp,
+            }
+            local function apply()
+                if not setfflag then
+                    return
+                end
+                for k, v in pairs(flags) do
+                    local ck = strip(k)
+                    pcall(
+                        function()
+                            if getfflag(ck) ~= nil then
+                                setfflag(ck, v)
+                            elseif getfflag(k) ~= nil then
+                                setfflag(k, v)
+                            end
+                        end
+                    )
+                end
+            end
+            while true do
+                apply()
+                task.wait(20)
+            end
         end
-        task.wait(0.5)
-    end
-end)
-
-local function reactApply(tt, interp, label)
-    if not setfflag then
-        pcall(function() if WindUI and WindUI.Notify then WindUI:Notify({Title="React", Content="setfflag not supported", Duration=3}) end end)
-        return
-    end
-    rcTT = tt; rcInterp = interp; rcActive = true
-    pcall(function() if WindUI and WindUI.Notify then WindUI:Notify({Title="React", Content=(label or "React") .. " activated", Duration=2}) end end)
+    )
 end
 
-Tab5:AddSection({"Classic"})
-Tab5:AddButton({"React 15%",  function() reactApply("13","90","React 15%") end})
-Tab5:AddButton({"React 25%",  function() reactApply("12","85","React 25%") end})
-Tab5:AddButton({"React 50%",  function() reactApply("10","75","React 50%") end})
-Tab5:AddButton({"React 75%",  function() reactApply("8","67","React 75%") end})
-Tab5:AddButton({"React 100%", function() reactApply("7","60","React 100%") end})
-
-Tab5:AddSection({"Named"})
-Tab5:AddButton({"⚡ React Alzzy",      function() reactApply("12","85","React Alzzy") end})
-Tab5:AddButton({"⚡ React abz",        function() reactApply("11","80","React abz") end})
-
-Tab5:AddSection({"Control"})
-Tab5:AddButton({"Stop React", function()
-    rcActive = false
-    pcall(function() if WindUI and WindUI.Notify then WindUI:Notify({Title="React", Content="Stopped", Duration=2}) end end)
-end})
-
-
+Tab5:AddButton(
+    {
+        "React 15%",
+        function()
+            applyReact("13", "90")
+        end
+    }
+)
+Tab5:AddButton(
+    {
+        "React 25%",
+        function()
+            applyReact("12", "85")
+        end
+    }
+)
+Tab5:AddButton(
+    {
+        "React 50%",
+        function()
+            applyReact("10", "75")
+        end
+    }
+)
+Tab5:AddButton(
+    {
+        "React 75%",
+        function()
+            applyReact("8", "67")
+        end
+    }
+)
+Tab5:AddButton(
+    {
+        "React 100%",
+        function()
+            applyReact("7", "60")
+        end
+    }
+)
 
 -- this under is xeno tab
 
