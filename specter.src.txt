@@ -2637,7 +2637,7 @@ v22:CreateButton({
 })
 local v33 = v2:CreateTab({Name = "Helpers", Desc = "Script 2 helpers", Icon = "circle-help"})
 v33:CreateSection("Air Dribble")
-v33:CreateParagraph({Title = "Helpers", Content = "Script 2 helper functions, presented with the Airflow UI."})
+v33:CreateParagraph({Title = "Helpers", Content = "Script 2 helper functions, presented with the Specter UI."})
 local tbl18 = {on = false, radius = 13, height = 1.7, strength = 35, damping = 0.5}
 tbl18.connection = nil
 tbl18.velocity = nil
