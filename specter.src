@@ -1335,146 +1335,81 @@ v21:CreateButton({
 })
 local v22 = v2:CreateTab({Name = "React", Desc = "React delay", Icon = "smile-plus"})
 v22:CreateSection("React")
-v22:CreateParagraph({Title = "React", Content = "unbeatable."})
+v22:CreateParagraph({
+	Title = "React",
+	Content = "15% = highest delay (safer), 100% = lowest delay (most aggressive).",
+})
+
 local v48
+local function applyReact(tt, interp)
+	local function strip(k)
+		return k:gsub("^DFInt", ""):gsub("^DFFlag", ""):gsub("FString", ""):gsub("FLog", ""):gsub(
+			"^FFlag", ""
+		):gsub("^DFint", ""):gsub("^FInt", "")
+	end
+	if v48 then
+		task.cancel(v48)
+	end
+	v48 = task.spawn(function()
+		local flags = {
+			["DFIntTargetTimeDelayFacctorTenths"] = tt,
+			["FIntInterpolationMaxDelayMSec"] = interp,
+		}
+		local function apply()
+			if not setfflag then
+				return
+			end
+			for k, v in pairs(flags) do
+				local ck = strip(k)
+				pcall(function()
+					if getfflag(ck) ~= nil then
+						setfflag(ck, v)
+					elseif getfflag(k) ~= nil then
+						setfflag(k, v)
+					end
+				end)
+			end
+		end
+		while true do
+			apply()
+			task.wait(20)
+		end
+	end)
+end
+
 v22:CreateButton({
 	Name = "React 15%",
+	Desc = "Delay: 13 | Interp: 90 (Highest delay, safer)",
 	Callback = function()
-		local str = "13"
-		local str1 = "90"
-		if v48 then
-			task.cancel(v48)
-		end
-		v48 = task.spawn(function()
-			local tbl = {DFIntTargetTimeDelayFacctorTenths = str, FIntInterpolationMaxDelayMSec = str1}
-			while true do
-				if setfflag then
-					for k, v1 in pairs(tbl) do
-						local v2 = tostring(k):gsub("^DFInt", ""):gsub("^DFFlag", ""):gsub("FString", ""):gsub("FLog", ""):gsub("^FFlag", ""):gsub("^DFint", ""):gsub("^FInt", "")
-						func(function()
-							if getfflag(v2) ~= nil then
-								setfflag(v2, v1)
-							elseif getfflag(k) ~= nil then
-								setfflag(k, v1)
-							end
-						end)
-					end
-				end
-				task.wait(20)
-			end
-		end)
+		applyReact("13", "90")
 	end,
 })
 v22:CreateButton({
 	Name = "React 25%",
+	Desc = "Delay: 12 | Interp: 85 (Mild delay reduction)",
 	Callback = function()
-		local str = "12"
-		local str1 = "85"
-		if v48 then
-			task.cancel(v48)
-		end
-		v48 = task.spawn(function()
-			local tbl = {DFIntTargetTimeDelayFacctorTenths = str, FIntInterpolationMaxDelayMSec = str1}
-			while true do
-				if setfflag then
-					for k, v1 in pairs(tbl) do
-						local v2 = tostring(k):gsub("^DFInt", ""):gsub("^DFFlag", ""):gsub("FString", ""):gsub("FLog", ""):gsub("^FFlag", ""):gsub("^DFint", ""):gsub("^FInt", "")
-						func(function()
-							if getfflag(v2) ~= nil then
-								setfflag(v2, v1)
-							elseif getfflag(k) ~= nil then
-								setfflag(k, v1)
-							end
-						end)
-					end
-				end
-				task.wait(20)
-			end
-		end)
+		applyReact("12", "85")
 	end,
 })
 v22:CreateButton({
 	Name = "React 50%",
+	Desc = "Delay: 10 | Interp: 75 (Balanced / medium)",
 	Callback = function()
-		local str = "10"
-		local str1 = "75"
-		if v48 then
-			task.cancel(v48)
-		end
-		v48 = task.spawn(function()
-			local tbl = {DFIntTargetTimeDelayFacctorTenths = str, FIntInterpolationMaxDelayMSec = str1}
-			while true do
-				if setfflag then
-					for k, v1 in pairs(tbl) do
-						local v2 = tostring(k):gsub("^DFInt", ""):gsub("^DFFlag", ""):gsub("FString", ""):gsub("FLog", ""):gsub("^FFlag", ""):gsub("^DFint", ""):gsub("^FInt", "")
-						func(function()
-							if getfflag(v2) ~= nil then
-								setfflag(v2, v1)
-							elseif getfflag(k) ~= nil then
-								setfflag(k, v1)
-							end
-						end)
-					end
-				end
-				task.wait(20)
-			end
-		end)
+		applyReact("10", "75")
 	end,
 })
 v22:CreateButton({
 	Name = "React 75%",
+	Desc = "Delay: 8 | Interp: 67 (Fast reaction, competitive)",
 	Callback = function()
-		local str = "8"
-		local str1 = "67"
-		if v48 then
-			task.cancel(v48)
-		end
-		v48 = task.spawn(function()
-			local tbl = {DFIntTargetTimeDelayFacctorTenths = str, FIntInterpolationMaxDelayMSec = str1}
-			while true do
-				if setfflag then
-					for k, v1 in pairs(tbl) do
-						local v2 = tostring(k):gsub("^DFInt", ""):gsub("^DFFlag", ""):gsub("FString", ""):gsub("FLog", ""):gsub("^FFlag", ""):gsub("^DFint", ""):gsub("^FInt", "")
-						func(function()
-							if getfflag(v2) ~= nil then
-								setfflag(v2, v1)
-							elseif getfflag(k) ~= nil then
-								setfflag(k, v1)
-							end
-						end)
-					end
-				end
-				task.wait(20)
-			end
-		end)
+		applyReact("8", "67")
 	end,
 })
 v22:CreateButton({
 	Name = "React 100%",
+	Desc = "Delay: 7 | Interp: 60 (Lowest delay, most aggressive)",
 	Callback = function()
-		local str = "7"
-		local str1 = "60"
-		if v48 then
-			task.cancel(v48)
-		end
-		v48 = task.spawn(function()
-			local tbl = {DFIntTargetTimeDelayFacctorTenths = str, FIntInterpolationMaxDelayMSec = str1}
-			while true do
-				if setfflag then
-					for k, v1 in pairs(tbl) do
-						local v2 = tostring(k):gsub("^DFInt", ""):gsub("^DFFlag", ""):gsub("FString", ""):gsub("FLog", ""):gsub("^FFlag", ""):gsub("^DFint", ""):gsub("^FInt", "")
-						func(function()
-							if getfflag(v2) ~= nil then
-								setfflag(v2, v1)
-							elseif getfflag(k) ~= nil then
-								setfflag(k, v1)
-							end
-						end)
-					end
-				end
-				task.wait(20)
-			end
-		end)
+		applyReact("7", "60")
 	end,
 })
 local v23 = v2:CreateTab({Name = "Xeno Moss", Desc = "Moss for Xeno & Solara", Icon = "zap"})
